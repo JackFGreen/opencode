@@ -75,6 +75,46 @@ function normalizeMessages(
     return content
   }
 
+  // Anthropic/Bedrock/openai-compatible rejects messages with empty content
+  // Anthropic and Bedrock have provider-specific reasoning handling below, so only
+  // apply the generic filtering for openai-compatible here.
+  if (model.api.npm === "@ai-sdk/openai-compatible") {
+    msgs = msgs
+      .map((msg) => {
+        if (typeof msg.content === "string") {
+          if (msg.content === "") return undefined
+          return msg
+        }
+        if (!Array.isArray(msg.content)) return msg
+        const filtered = msg.content
+          .map((part: any) => {
+            // Filter empty text blocks nested inside tool-result content arrays
+            if (part.type === "tool-result" && part.output?.type === "content" && Array.isArray(part.output.value)) {
+              const cleaned = part.output.value.filter(
+                (block: any) => block.type !== "text" || (block.text && block.text !== ""),
+              )
+              return {
+                ...part,
+                output: {
+                  ...part.output,
+                  value: cleaned.length > 0 ? cleaned : [{ type: "text", text: "[No output]" }],
+                },
+              }
+            }
+            return part
+          })
+          .filter((part: any) => {
+            if (part.type === "text" || part.type === "reasoning") {
+              return part.text && part.text !== ""
+            }
+            return true
+          })
+        if (filtered.length === 0) return undefined
+        return { ...msg, content: filtered }
+      })
+      .filter((msg): msg is ModelMessage => msg !== undefined)
+  }
+
   msgs = msgs.map((msg) => {
     switch (msg.role) {
       case "tool":
@@ -132,19 +172,36 @@ function normalizeMessages(
           return msg
         }
         if (!Array.isArray(msg.content)) return msg
-        const filtered = msg.content.filter((part) => {
-          if (part.type === "text") {
-            return part.text !== ""
-          }
-          if (part.type === "reasoning") {
-            return (
-              part.text.trim().length > 0 ||
-              part.providerOptions?.anthropic?.signature != null ||
-              part.providerOptions?.anthropic?.redactedData != null
-            )
-          }
-          return true
-        })
+        const filtered = msg.content
+          .map((part: any) => {
+            // Filter empty text blocks nested inside tool-result content arrays
+            if (part.type === "tool-result" && part.output?.type === "content" && Array.isArray(part.output.value)) {
+              const cleaned = part.output.value.filter(
+                (block: any) => block.type !== "text" || (block.text && block.text !== ""),
+              )
+              return {
+                ...part,
+                output: {
+                  ...part.output,
+                  value: cleaned.length > 0 ? cleaned : [{ type: "text", text: "[No output]" }],
+                },
+              }
+            }
+            return part
+          })
+          .filter((part) => {
+            if (part.type === "text") {
+              return part.text !== ""
+            }
+            if (part.type === "reasoning") {
+              return (
+                part.text.trim().length > 0 ||
+                part.providerOptions?.anthropic?.signature != null ||
+                part.providerOptions?.anthropic?.redactedData != null
+              )
+            }
+            return true
+          })
         if (filtered.length === 0) return undefined
         return { ...msg, content: filtered }
       })
@@ -160,19 +217,36 @@ function normalizeMessages(
           return msg
         }
         if (!Array.isArray(msg.content)) return msg
-        const filtered = msg.content.filter((part) => {
-          if (part.type === "text") {
-            return part.text !== ""
-          }
-          if (part.type === "reasoning") {
-            return (
-              part.text.trim().length > 0 ||
-              part.providerOptions?.bedrock?.signature != null ||
-              part.providerOptions?.bedrock?.redactedData != null
-            )
-          }
-          return true
-        })
+        const filtered = msg.content
+          .map((part: any) => {
+            // Filter empty text blocks nested inside tool-result content arrays
+            if (part.type === "tool-result" && part.output?.type === "content" && Array.isArray(part.output.value)) {
+              const cleaned = part.output.value.filter(
+                (block: any) => block.type !== "text" || (block.text && block.text !== ""),
+              )
+              return {
+                ...part,
+                output: {
+                  ...part.output,
+                  value: cleaned.length > 0 ? cleaned : [{ type: "text", text: "[No output]" }],
+                },
+              }
+            }
+            return part
+          })
+          .filter((part) => {
+            if (part.type === "text") {
+              return part.text !== ""
+            }
+            if (part.type === "reasoning") {
+              return (
+                part.text.trim().length > 0 ||
+                part.providerOptions?.bedrock?.signature != null ||
+                part.providerOptions?.bedrock?.redactedData != null
+              )
+            }
+            return true
+          })
         if (filtered.length === 0) return undefined
         return { ...msg, content: filtered }
       })
